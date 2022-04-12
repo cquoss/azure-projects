@@ -9,10 +9,18 @@
     <name>Azure :: AD B2C</name>
     <description>Example project using the Microsoft Graph API with an Azure Active Directory B2C.</description>
     <dependencies>
+        <!-- compile -->
         <dependency>
             <groupId>com.microsoft.azure</groupId>
             <artifactId>msal4j</artifactId>
             <version>1.11.3</version>
+        </dependency>
+        <!-- runtime -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.2.11</version>
+            <scope>runtime</scope>
         </dependency>
     </dependencies>
 </project>
