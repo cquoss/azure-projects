@@ -1,10 +1,17 @@
 package de.quoss.azure.adb2c;
 
+import com.azure.identity.ClientSecretCredential;
+import com.azure.identity.ClientSecretCredentialBuilder;
 import com.microsoft.aad.msal4j.ClientCredentialFactory;
 import com.microsoft.aad.msal4j.ClientCredentialParameters;
 import com.microsoft.aad.msal4j.ConfidentialClientApplication;
 import com.microsoft.aad.msal4j.IAuthenticationResult;
 import com.microsoft.aad.msal4j.IClientCredential;
+import com.microsoft.graph.authentication.TokenCredentialAuthProvider;
+import com.microsoft.graph.models.User;
+import com.microsoft.graph.requests.GraphServiceClient;
+import com.microsoft.graph.requests.UserCollectionPage;
+import com.microsoft.graph.requests.UserCollectionRequestBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,6 +19,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
 
 public class Main {
@@ -37,42 +46,72 @@ public class Main {
     public static void main(final String[] args) {
         try {
             loadProperties();
-            new Main().run();
+            new Main().run(args);
         } catch (AzureAdB2cException e) {
             LOGGER.error("", e);
             System.exit(1);
         }
     }
 
-    private void run() throws AzureAdB2cException {
+    private void run(final String[] args) throws AzureAdB2cException {
         final String methodName = "run()";
-        String token = authenticateApplication();
-        LOGGER.info("{} [token={}]", methodName, token);
+        final GraphServiceClient client = createClient();
+        if (args.length == 0) {
+            throw new AzureAdB2cException("USAGE: java " + getClass().getCanonicalName() + " command ...");
+        }
+        switch (args[0]) {
+            case "listUsers" :
+                listUsers(client);
+                break;
+            default:
+                throw new AzureAdB2cException("Unknown command: " + args[0]);
+        }
+    }
+
+    private void listUsers(final GraphServiceClient client) {
+        UserCollectionPage page = client.users().buildRequest()
+                .select("id,userPrincipalName")
+                .get();
+        while (page != null) {
+            List<User> users = page.getCurrentPage();
+            for (User user : users) {
+                logUser(user);
+            }
+            final UserCollectionRequestBuilder nextPage = page.getNextPage();
+            if (nextPage == null) {
+                break;
+            } else {
+                page = nextPage.buildRequest()
+                        .get();
+            }
+        }
+    }
+
+    private void logUser(final User user) {
+        LOGGER.info("User [id={},userPrincipalName={}]", user.id, user.userPrincipalName);
     }
 
     /**
-     * Look here: https://github.com/AzureAD/microsoft-authentication-library-for-java/blob/dev/src/samples/confidential-client/ClientCredentialGrant.java
-     *
-     * @return Access token as String.
+     * Create graph service client.
+     * @return Client.
      * @throws AzureAdB2cException Thrown in case of error.
      */
-    private String authenticateApplication() throws AzureAdB2cException {
-        final String authority = getProperty("authority");
+    private GraphServiceClient createClient() throws AzureAdB2cException {
+        final String tenantId = getProperty("tenant-id");
         final String clientId = getProperty("client-id");
         final String scope = getProperty("scope");
         final String secret = getProperty("secret");
-        IClientCredential credential = ClientCredentialFactory.createFromSecret(secret);
-        ConfidentialClientApplication app;
-        try {
-            app = ConfidentialClientApplication.builder(clientId, credential)
-                    .authority(authority)
-                    .build();
-        } catch (MalformedURLException e) {
-            throw new AzureAdB2cException(e);
-        }
-        ClientCredentialParameters parameters = ClientCredentialParameters.builder(Collections.singleton(scope)).build();
-        IAuthenticationResult result = app.acquireToken(parameters).join();
-        return result.accessToken();
+        final ClientSecretCredential credential = new ClientSecretCredentialBuilder()
+                .clientId(clientId)
+                .clientSecret(secret)
+                .tenantId(tenantId)
+                .build();
+        final List<String> scopes = new LinkedList<>();
+        scopes.add(scope);
+        final TokenCredentialAuthProvider authProvider = new TokenCredentialAuthProvider(scopes, credential);
+        return GraphServiceClient.builder()
+                .authenticationProvider(authProvider)
+                .buildClient();
     }
 
     private String getProperty(final String key) throws AzureAdB2cException {

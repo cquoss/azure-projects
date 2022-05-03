@@ -11,9 +11,14 @@
     <dependencies>
         <!-- compile -->
         <dependency>
-            <groupId>com.microsoft.azure</groupId>
-            <artifactId>msal4j</artifactId>
-            <version>1.11.3</version>
+            <groupId>com.microsoft.graph</groupId>
+            <artifactId>microsoft-graph</artifactId>
+            <version>5.22.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.5.0</version>
         </dependency>
         <!-- runtime -->
         <dependency>
