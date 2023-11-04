@@ -2,11 +2,9 @@ package de.quoss.azure.adb2c;
 
 import com.azure.identity.ClientSecretCredential;
 import com.azure.identity.ClientSecretCredentialBuilder;
-import com.microsoft.aad.msal4j.ClientCredentialFactory;
-import com.microsoft.aad.msal4j.ClientCredentialParameters;
-import com.microsoft.aad.msal4j.ConfidentialClientApplication;
-import com.microsoft.aad.msal4j.IAuthenticationResult;
-import com.microsoft.aad.msal4j.IClientCredential;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.graph.authentication.TokenCredentialAuthProvider;
 import com.microsoft.graph.models.User;
 import com.microsoft.graph.requests.GraphServiceClient;
@@ -17,8 +15,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
-import java.util.Collections;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
@@ -54,7 +58,6 @@ public class Main {
     }
 
     private void run(final String[] args) throws AzureAdB2cException {
-        final String methodName = "run()";
         final GraphServiceClient client = createClient();
         if (args.length == 0) {
             throw new AzureAdB2cException("USAGE: java " + getClass().getCanonicalName() + " command ...");
@@ -131,6 +134,43 @@ public class Main {
             throw new AzureAdB2cException("Mandatory property " + fullKey + " not set.");
         }
         return result;
+    }
+
+    private List<User> getUser(final String token) throws AzureAdB2cException {
+        final String methodName = "getUser(String)";
+        String url = getProperty("graph-base-url") + "/users";
+        HttpClient client = HttpClient.newBuilder()
+                .proxy(ProxySelector.of(new InetSocketAddress(8080)))
+                .build();
+        HttpRequest request;
+        try {
+            request = HttpRequest.newBuilder()
+                    .uri(new URI(url))
+                    .header("Authorization", "Bearer " + token)
+                    .build();
+        } catch (URISyntaxException e) {
+            throw new AzureAdB2cException(e);
+        }
+        HttpResponse<String> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        } catch (InterruptedException | IOException e) {
+            Thread.currentThread().interrupt();
+            throw new AzureAdB2cException(e);
+        }
+        final int statusCode = response.statusCode();
+        if (statusCode == 200) {
+            try {
+                return new ObjectMapper().readValue(response.body(), new TypeReference<List>() {
+                });
+            } catch (JsonProcessingException e) {
+                throw new AzureAdB2cException(e);
+            }
+        } else {
+            String body = response.body();
+            LOGGER.error("{} [statusCode={},body={}]", methodName, statusCode, body);
+            return new LinkedList<>();
+        }
     }
 
 }
